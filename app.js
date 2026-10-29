@@ -269,12 +269,12 @@
 
   function secaoCotacaoDiaria(f) {
     let per = store.get('cot_diaria_periodo', '1a');
-    const opts = [['6m', '6 meses', 182], ['1a', '1 ano', 365], ['2a', '2 anos', 730], ['5a', '5 anos', 1830]];
+    const opts = [['6m', '6 meses', 182], ['1a', '1 ano', 365], ['2a', '2 anos', 730], ['5a', '5 anos', 1830], ['10a', '10 anos', 3655], ['tudo', 'Tudo', 1e6]];
     const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Intervalo' });
     const btns = opts.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(k === per), onclick: () => { per = k; store.set('cot_diaria_periodo', k); desenhar(); } }, l));
     btns.forEach(b => seg.appendChild(b));
     const g = h('div', { class: 'graf' }, h('p', { class: 'carregando' }, 'Carregando cotações diárias…'));
-    const info = h('p', { class: 'desc' }, 'Fechamento de cada pregão, em R$, e o fechamento ajustado por proventos (quanto valeria a ação com dividendos e JCP reinvestidos, na base do preço atual).');
+    const info = h('p', { class: 'desc' }, 'Fechamento de cada pregão desde o início da negociação, em R$, e o fechamento ajustado por proventos (quanto valeria a ação com dividendos e JCP reinvestidos, na base do preço atual).');
     app.appendChild(card(h('div', { class: 'cab' }, h('h2', null, 'Cotação diária'), seg), info, g));
     let pts = [];
     function desenhar() {
