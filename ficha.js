@@ -450,6 +450,12 @@
     return f;
   }
 
+  // cotação diária dos últimos 5 anos (tabela cotacoes): fechamento e ajustado por proventos
+  async function diaria(t) {
+    const rows = await todos('cotacoes', { select: 'data,fechamento,ajustado', ticker: 'eq.' + t, order: 'data' });
+    return rows.map(r => ({ data: r.data, fechamento: Number(r.fechamento), ajustado: r.ajustado == null ? null : Number(r.ajustado) }));
+  }
+
   async function ficha(t) {
     const e = await porTicker(t);
     if (!e) throw new Error('ticker não encontrado no banco: ' + t);
@@ -457,5 +463,5 @@
     return montarFicha(e, d, t, sr);
   }
 
-  window.Fichas = { lista, meta, ficha, montarFicha, dados, serie, porTicker };
+  window.Fichas = { lista, meta, ficha, montarFicha, dados, serie, diaria, porTicker };
 })();

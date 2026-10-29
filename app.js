@@ -207,6 +207,7 @@
       tooltip: i => { const r = Apl[i]; return [['P/L', r.p_l != null && r.p_l < 0 ? 'prejuízo' : xv(r.p_l), C1], [r.parcial ? 'Cotação atual' : 'Preço no fim do ano', rs(r.preco)], ['Lucro por ação', rs(r.lpa)], ['P/VP', xv(r.p_vp)], ['Valor de mercado', r.valor_mercado_bi != null ? 'R$ ' + N1.format(r.valor_mercado_bi) + ' bi' : null]]; } });
 
     // cotação
+    secaoCotacaoDiaria(f);
     if (temPreco) secaoCotacao(f);
 
     // proventos
@@ -264,6 +265,38 @@
     if (f.fonte_cotacao) notas.push('Cotações: ' + f.fonte_cotacao + '. Preço sem ajuste por proventos, ajustado por desdobramentos; “com proventos reinvestidos” usa o fechamento ajustado.');
     notas.push(f.contas.acoes === 'capital' ? 'Ações em circulação: composição do capital (total menos tesouraria) informada nos DFP/ITR da CVM; valor de mercado = ações × cotação do ticker escolhido; P/L = valor de mercado ÷ lucro dos controladores.' : 'Ações em circulação estimadas como lucro dos controladores ÷ lucro por ação da classe ' + (f.classe === 'UNIT' ? 'ON' : f.classe) + ' (sem os zips da CVM); P/L, valor de mercado e yield dependem dessa estimativa.');
     app.appendChild(h('div', { class: 'rodape' }, h('b', null, 'Notas e fontes'), h('ul', null, notas.map(n => h('li', null, n))), h('p', null, 'Ficha gerada em ' + f.gerado_em + ' a partir do banco fichas-b3. Não é recomendação de investimento.')));
+  }
+
+  function secaoCotacaoDiaria(f) {
+    let per = store.get('cot_diaria_periodo', '1a');
+    const opts = [['6m', '6 meses', 182], ['1a', '1 ano', 365], ['2a', '2 anos', 730], ['5a', '5 anos', 1830]];
+    const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Intervalo' });
+    const btns = opts.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(k === per), onclick: () => { per = k; store.set('cot_diaria_periodo', k); desenhar(); } }, l));
+    btns.forEach(b => seg.appendChild(b));
+    const g = h('div', { class: 'graf' }, h('p', { class: 'carregando' }, 'Carregando cotações diárias…'));
+    const info = h('p', { class: 'desc' }, 'Fechamento de cada pregão, em R$, e o fechamento ajustado por proventos (quanto valeria a ação com dividendos e JCP reinvestidos, na base do preço atual).');
+    app.appendChild(card(h('div', { class: 'cab' }, h('h2', null, 'Cotação diária'), seg), info, g));
+    let pts = [];
+    function desenhar() {
+      btns.forEach((b, i) => b.setAttribute('aria-pressed', String(opts[i][0] === per)));
+      if (!pts.length) return;
+      const ult = pts[pts.length - 1], dias = opts.find(o => o[0] === per)[2];
+      const lim = new Date(ult.d.getTime() - dias * 864e5);
+      let s = pts.filter(p => p.d >= lim);
+      if (s.length < 2) s = pts;
+      const v0 = s[0], vp = ult.v / v0.v - 1, va = ult.a != null && v0.a ? ult.a / v0.a - 1 : null;
+      info.textContent = '';
+      info.append('Fechamento de cada pregão, em R$. Último: ', h('b', null, rs(ult.v)), ' em ' + dataBR(ult.data) + '. No intervalo: ', h('b', { class: cls(vp) }, pctS(vp)), ' só no preço',
+        ...(va != null ? [' e ', h('b', { class: cls(va) }, pctS(va)), ' com proventos reinvestidos (linha ajustada)'] : []), '.');
+      G.tempo(g, { pts: s, series: [{ nome: 'Fechamento', key: 'v', cor: 'var(--a)' }, { nome: 'Ajustado por proventos', key: 'a', cor: 'var(--c)' }], zero: false,
+        fmt: v => 'R$ ' + (v < 10 ? N2 : N0).format(v), titulo: p => dataBR(p.data),
+        tooltip: p => [['Fechamento', rs(p.v), 'var(--a)'], ['Ajustado por proventos', rs(p.a), 'var(--c)']] });
+    }
+    Fichas.diaria(f.ticker).then(rows => {
+      pts = rows.filter(r => isFinite(r.fechamento)).map(r => ({ d: new Date(r.data + 'T12:00:00'), data: r.data, v: r.fechamento, a: r.ajustado }));
+      if (!pts.length) { g.textContent = ''; g.appendChild(h('div', { class: 'vazio' }, 'Sem cotações diárias deste ticker no banco.')); return; }
+      desenhar();
+    }).catch(e => { g.textContent = ''; g.appendChild(h('div', { class: 'vazio' }, 'Não consegui ler as cotações diárias: ' + e.message)); });
   }
 
   function secaoCotacao(f) {

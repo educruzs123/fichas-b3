@@ -177,7 +177,7 @@
         const p = pts[bi], xx = X(p.d.getTime());
         rule.setAttribute('x1', xx); rule.setAttribute('x2', xx); rule.removeAttribute('display');
         o.series.forEach((x, si) => { const v = p[x.key]; if (v == null) { dots[si].setAttribute('display', 'none'); return; } dots[si].setAttribute('cx', xx); dots[si].setAttribute('cy', Y(v)); dots[si].removeAttribute('display'); });
-        mostrarTip(ev, MES[p.d.getMonth()] + '/' + p.d.getFullYear(), o.tooltip ? o.tooltip(p, bi) : o.series.map(x => [x.nome, fmt(p[x.key]), x.cor]));
+        mostrarTip(ev, o.titulo ? o.titulo(p) : MES[p.d.getMonth()] + '/' + p.d.getFullYear(), o.tooltip ? o.tooltip(p, bi) : o.series.map(x => [x.nome, fmt(p[x.key]), x.cor]));
       });
       cap.addEventListener('mouseleave', () => { rule.setAttribute('display', 'none'); dots.forEach(d => d.setAttribute('display', 'none')); esconderTip(); });
     };
