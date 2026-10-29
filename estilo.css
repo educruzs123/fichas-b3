@@ -94,6 +94,14 @@ table.t tr:hover td { background: color-mix(in srgb, var(--a3) 45%, transparent)
 table.t th:first-child, table.t td:first-child { position: sticky; left: 0; background: var(--card); z-index: 2; font-weight: 600; }
 table.t th:first-child { background: var(--ln2); z-index: 3; }
 table.t tr.parcial td { color: var(--mu); font-style: italic; }
+.demos { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--ln2); }
+.demos:first-child { border-top: 0; }
+table.demo { white-space: normal; }
+table.t th.n { text-align: right; }
+table.demo td:nth-child(2) { white-space: normal; min-width: 22em; }
+table.demo tr.nv0 td, table.demo tr.nv1 td { font-weight: 700; }
+table.demo tr.nv0 td { background: var(--ln2); }
+table.demo tr.nv3 td { color: var(--mu); }
 table.lista td:first-child { font-weight: 700; }
 table.lista tr { cursor: pointer; }
 

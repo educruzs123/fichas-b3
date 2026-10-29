@@ -456,6 +456,38 @@
     return rows.map(r => ({ data: r.data, fechamento: Number(r.fechamento), ajustado: r.ajustado == null ? null : Number(r.ajustado) }));
   }
 
+
+  // ---------- demonstrações completas (ITR e DFP), conta por conta ----------
+  const rotTri = dt => Math.floor((Number(dt.slice(5, 7)) + 2) / 3) + 'T' + dt.slice(2, 4);
+  // ITRs gravados (bp_tri, conta 1 = ativo total: uma linha por data) e anos com DFP
+  async function periodos(e) {
+    const id = 'eq.' + e.id;
+    const [itr, anos] = await Promise.all([
+      todos('bp_tri', { select: 'dt_refer', empresa_id: id, cod_conta: 'eq.1', order: 'dt_refer' }),
+      get('base_ano', { select: 'ano', empresa_id: id, order: 'ano' })]);
+    return {
+      itr: itr.map(r => ({ dt: r.dt_refer, rot: rotTri(r.dt_refer) })),
+      dfp: anos.map(r => r.ano).filter(a => !e.ult_dfp || a <= e.ult_dfp)
+    };
+  }
+  // tipo 'itr' (chave = data de referência, aaaa-mm-dd) ou 'dfp' (chave = ano)
+  async function demonstracao(e, tipo, chave) {
+    const id = 'eq.' + e.id;
+    if (tipo === 'itr') {
+      const p = { empresa_id: id, dt_refer: 'eq.' + chave, order: 'cod_conta' };
+      const [dre, bp, dfc] = await Promise.all([
+        todos('v_dre_tri', Object.assign({ select: 'cod_conta,conta,trimestre,acumulado,base' }, p)),
+        todos('v_bp_tri', Object.assign({ select: 'cod_conta,conta,valor,base' }, p)),
+        todos('v_dfc_tri', Object.assign({ select: 'cod_conta,conta,acumulado,base' }, p))]);
+      const base = (dre[0] || bp[0] || dfc[0] || {}).base || '';
+      return { tipo, chave, rot: rotTri(chave), base, dre, bp: bp.map(r => ({ cod_conta: r.cod_conta, conta: r.conta, valor: r.valor })), dfc: dfc.map(r => ({ cod_conta: r.cod_conta, conta: r.conta, valor: r.acumulado })) };
+    }
+    const contas = tab => todos(tab, { select: 'cod_conta,valor,contas_nome(nome)', empresa_id: id, ano: 'eq.' + chave, order: 'cod_conta' })
+      .then(rs => rs.map(r => ({ cod_conta: r.cod_conta, conta: r.contas_nome ? r.contas_nome.nome : '', valor: r.valor })));
+    const [dre, bp, dfc, b] = await Promise.all([contas('dre'), contas('bp'), contas('dfc'), get('base_ano', { select: 'base', empresa_id: id, ano: 'eq.' + chave })]);
+    return { tipo, chave: Number(chave), rot: 'DFP ' + chave, base: (b[0] || {}).base || '', dre, bp, dfc };
+  }
+
   async function ficha(t) {
     const e = await porTicker(t);
     if (!e) throw new Error('ticker não encontrado no banco: ' + t);
@@ -463,5 +495,5 @@
     return montarFicha(e, d, t, sr);
   }
 
-  window.Fichas = { lista, meta, ficha, montarFicha, dados, serie, diaria, porTicker };
+  window.Fichas = { lista, meta, ficha, montarFicha, dados, serie, diaria, porTicker, periodos, demonstracao, rotTri };
 })();

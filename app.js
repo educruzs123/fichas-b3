@@ -124,7 +124,8 @@
 
   // ---------- roteador ----------
   const qs = new URLSearchParams(location.search);
-  if (qs.get('t')) paginaFicha(qs.get('t'));
+  if (qs.get('t') && (qs.get('itr') || qs.get('dfp'))) paginaDemo(qs.get('t'), qs.get('itr') ? 'itr' : 'dfp', qs.get('itr') || qs.get('dfp'));
+  else if (qs.get('t')) paginaFicha(qs.get('t'));
   else { document.querySelectorAll('[data-nav=inicio]').forEach(a => a.classList.add('ativo')); paginaInicio(qs.get('q') || ''); }
 
   // ---------- início ----------
@@ -198,7 +199,8 @@
     const barra = h('div', { class: 'acoes noprint', style: 'margin:-6px 0 18px' },
       h('button', { class: 'btn', onclick: () => paginaFicha(f.ticker, true) }, 'Recarregar'),
       h('button', { class: 'btn', onclick: () => baixarCSV(f) }, 'Baixar tabela (CSV)'),
-      h('button', { class: 'btn', onclick: () => window.print() }, 'Imprimir / PDF'));
+      h('button', { class: 'btn', onclick: () => window.print() }, 'Imprimir / PDF'),
+      h('a', { class: 'btn', href: '#demonstracoes' }, 'Demonstrações completas'));
     app.appendChild(barra);
     if (f.aviso_cotacao) app.appendChild(aviso('alerta', f.aviso_cotacao));
 
@@ -332,6 +334,9 @@
         tooltip: i => [[f.rotulo_receita, mi(T[i].receita), C1], ['Var. a/a', pctS(T[i].var_receita)], ['Lucro dos controladores', mi(T[i].lucro_ctrl)], ['Margem líquida', pct(T[i].margem_liq), C2]] });
     }
 
+    // links para cada ITR e DFP gravado no banco
+    secaoDemonstracoes(f);
+
     // notas
     const notas = (f.notas || []).slice();
     notas.push('Demonstrações financeiras: banco fichas-b3 no Supabase, carregado dos DFP/ITR da CVM (dados abertos, toda semana, e Empresas.NET, no dia da entrega); valores em R$ milhões.');
@@ -402,6 +407,110 @@
         tooltip: p => [['Com proventos', 'R$ ' + N0.format(p.com) + ' (' + pctS(p.com / 1000 - 1) + ')', 'var(--c)'], ['Só preço', 'R$ ' + N0.format(p.so) + ' (' + pctS(p.so / 1000 - 1) + ')', 'var(--eixo)']] });
     }
     desenhar();
+  }
+
+
+  // ---------- demonstrações completas ----------
+  const linkDemo = (t, tipo, chave) => '?t=' + encodeURIComponent(t) + '&' + tipo + '=' + encodeURIComponent(chave);
+  function secaoDemonstracoes(f) {
+    const corpo = h('div', null, h('p', { class: 'status' }, 'Procurando os documentos no banco…'));
+    app.appendChild(h('section', { class: 'card secao', id: 'demonstracoes' }, h('h2', null, 'Demonstrações completas'),
+      h('p', { class: 'desc' }, 'DRE, balanço e fluxo de caixa de cada documento entregue à CVM, conta por conta, como estão no banco.'), corpo));
+    Fichas.porTicker(f.ticker).then(e => Fichas.periodos(e)).then(p => {
+      corpo.textContent = '';
+      const linha = (titulo, itens) => h('div', { class: 'demos' }, h('span', { class: 'status' }, titulo), h('span', { class: 'chips' }, itens));
+      if (p.itr.length) {
+        const anos = {};
+        p.itr.forEach(x => { (anos[x.dt.slice(0, 4)] = anos[x.dt.slice(0, 4)] || []).push(x); });
+        Object.keys(anos).sort().reverse().forEach(a => corpo.appendChild(linha('ITR ' + a, anos[a].slice().reverse().map(x => h('a', { class: 'chip', href: linkDemo(f.ticker, 'itr', x.dt) }, x.rot)))));
+      } else corpo.appendChild(h('p', { class: 'status' }, 'Nenhum ITR completo gravado para esta empresa (o banco guarda os ITR a partir de 2025).'));
+      if (p.dfp.length) corpo.appendChild(linha('DFP (anual)', p.dfp.slice().reverse().map(a => h('a', { class: 'chip cinza', href: linkDemo(f.ticker, 'dfp', a) }, String(a)))));
+    }).catch(err => { corpo.textContent = ''; corpo.appendChild(aviso('erro', 'Não foi possível listar os documentos: ' + err.message)); });
+  }
+
+  async function paginaDemo(t, tipo, chave) {
+    t = t.toUpperCase();
+    app.textContent = '';
+    app.appendChild(h('p', { class: 'carregando' }, 'Carregando as demonstrações de ' + t + '…'));
+    let e, per, d;
+    try {
+      e = await Fichas.porTicker(t);
+      if (!e) throw new Error('ticker não encontrado no banco: ' + t);
+      [per, d] = await Promise.all([Fichas.periodos(e), Fichas.demonstracao(e, tipo, chave)]);
+    } catch (err) {
+      app.textContent = '';
+      app.appendChild(h('h1', null, t));
+      app.appendChild(aviso('erro', err.message, ' ', h('a', { href: '?t=' + encodeURIComponent(t) }, 'Voltar à ficha')));
+      return;
+    }
+    const nome = e.nome_curto || e.nome;
+    const titulo = tipo === 'itr' ? 'ITR ' + d.rot : 'DFP ' + d.chave;
+    document.title = t + ' · ' + titulo + ' — Fichas B3';
+    app.textContent = '';
+
+    // sequência de documentos, do mais antigo ao mais novo (DFP no fim do ano)
+    const seq = per.itr.map(x => ({ tipo: 'itr', chave: x.dt, rot: x.rot, ord: x.dt }))
+      .concat(per.dfp.map(a => ({ tipo: 'dfp', chave: String(a), rot: 'DFP ' + a, ord: a + '-12-31~' })))
+      .sort((a, b) => a.ord < b.ord ? -1 : 1);
+    const i = seq.findIndex(x => x.tipo === tipo && x.chave === String(chave));
+    const ant = i > 0 ? seq[i - 1] : null, prox = i >= 0 && i < seq.length - 1 ? seq[i + 1] : null;
+
+    app.appendChild(h('p', { class: 'kicker' }, tipo === 'itr' ? 'Informações trimestrais (ITR)' : 'Demonstrações financeiras padronizadas (DFP)'));
+    app.appendChild(h('h1', null, nome + ' · ' + titulo));
+    app.appendChild(h('p', { class: 'sub' }, `${e.nome} · CNPJ ${e.cnpj} · ` + (tipo === 'itr' ? 'data de referência ' + dataBR(chave) : 'exercício de ' + chave) + (d.base ? ' · ' + d.base : '') + ' · R$ milhões'));
+    app.appendChild(h('div', { class: 'acoes noprint', style: 'margin:-6px 0 18px' },
+      h('a', { class: 'btn', href: '?t=' + encodeURIComponent(t) }, '← Ficha de ' + t),
+      ant ? h('a', { class: 'btn', href: linkDemo(t, ant.tipo, ant.chave) }, '‹ ' + ant.rot) : null,
+      prox ? h('a', { class: 'btn', href: linkDemo(t, prox.tipo, prox.chave) }, prox.rot + ' ›') : null,
+      h('button', { class: 'btn', onclick: () => baixarDemo(t, titulo, d) }, 'Baixar (CSV)'),
+      h('button', { class: 'btn', onclick: () => window.print() }, 'Imprimir / PDF')));
+
+    if (!d.dre.length && !d.bp.length && !d.dfc.length) {
+      app.appendChild(aviso('alerta', 'Este documento não está no banco. ', h('a', { href: '?t=' + encodeURIComponent(t) + '#demonstracoes' }, 'Ver os documentos disponíveis')));
+      return;
+    }
+    const fmt = (cod, v) => ok(v) ? (cod.startsWith('3.99') ? N2 : N1).format(v) : '';
+    const nivel = cod => cod.split('.').length - 1;
+    const tabela = (linhas, cols) => h('div', { class: 'tabela-wrap' }, h('table', { class: 't demo' },
+      h('thead', null, h('tr', null, h('th', null, 'Conta'), h('th', null, 'Descrição'), cols.map(c => h('th', { class: 'n' }, c[0])))),
+      h('tbody', null, linhas.map(r => h('tr', { class: 'nv' + Math.min(nivel(r.cod_conta), 3) },
+        h('td', null, r.cod_conta),
+        h('td', { style: 'padding-left:' + (10 + 16 * Math.max(nivel(r.cod_conta) - 1, 0)) + 'px' }, r.conta || ''),
+        cols.map(c => { const v = r[c[1]]; return h('td', { class: 'n' + (ok(v) && v < 0 ? ' down' : '') }, fmt(r.cod_conta, v)); }))))));
+
+    const trim1 = tipo === 'itr' && d.dre.every(r => r.trimestre === r.acumulado);
+    const colsDre = tipo === 'dfp' ? [['Exercício ' + chave, 'valor']] : trim1 ? [[d.rot, 'trimestre']] : [['Trimestre (' + d.rot + ')', 'trimestre'], ['Acumulado no exercício', 'acumulado']];
+    const blocos = [
+      ['dre', 'Demonstração do resultado', d.dre, colsDre, tipo === 'itr' ? 'Todas as contas. "Trimestre" é o valor dos 3 meses como a empresa informou no ITR; "acumulado" vai do início do exercício até a data de referência.' : 'Todas as contas do exercício.'],
+      ['bp', 'Balanço patrimonial', d.bp, [['Em ' + (tipo === 'itr' ? dataBR(chave) : 'fim de ' + chave), 'valor']], 'Ativo (1) e passivo mais patrimônio líquido (2), até o 3º nível.'],
+      ['dfc', 'Fluxo de caixa', d.dfc, [[tipo === 'itr' ? 'Acumulado no exercício' : 'Exercício ' + chave, 'valor']], tipo === 'itr' ? 'Método indireto, até o 4º nível. O ITR só traz o fluxo acumulado no exercício.' : 'Método indireto, até o 3º nível.']];
+    // contas zeradas em todas as colunas ficam ocultas, a não ser que se peça
+    let zeros = store.get('demo_zeros', false);
+    const zerada = (r, cols) => cols.every(c => !r[c[1]]);
+    const cx = h('input', { type: 'checkbox' }); cx.checked = zeros;
+    const lugares = blocos.map(() => h('div'));
+    const desenhar = () => blocos.forEach((b, k) => {
+      const ls = zeros ? b[2] : b[2].filter(r => !zerada(r, b[3]));
+      lugares[k].textContent = '';
+      lugares[k].appendChild(ls.length ? tabela(ls, b[3]) : h('p', { class: 'status' }, 'Sem dados desta demonstração no banco.'));
+    });
+    cx.addEventListener('change', () => { zeros = cx.checked; store.set('demo_zeros', zeros); desenhar(); });
+    app.appendChild(h('div', { class: 'acoes noprint', style: 'align-items:center' }, blocos.map(b => h('a', { class: 'chip', href: '#' + b[0] }, b[1])),
+      h('label', { class: 'status', style: 'margin-left:auto' }, cx, ' Mostrar contas zeradas')));
+    blocos.forEach((b, k) => app.appendChild(h('section', { class: 'card secao', id: b[0] }, h('h2', null, b[1]), h('p', { class: 'desc' }, b[4] + (b[0] === 'dre' ? ' Contas 3.99 (lucro por ação) em R$ por ação.' : '')), lugares[k])));
+    desenhar();
+    app.appendChild(h('div', { class: 'rodape' }, h('p', null, 'Fonte: ' + (tipo === 'itr' ? 'ITR' : 'DFP') + ' entregue à CVM (dados abertos e Empresas.NET), banco fichas-b3. Não é recomendação de investimento.')));
+  }
+
+  function baixarDemo(t, titulo, d) {
+    const esc = v => { if (v == null) return ''; if (typeof v === 'number') return String(v).replace('.', ','); const s = String(v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const linhas = ['demonstracao;cod_conta;conta;' + (d.tipo === 'itr' ? 'trimestre;acumulado' : 'valor')];
+    d.dre.forEach(r => linhas.push(['DRE', r.cod_conta, r.conta].map(esc).concat(d.tipo === 'itr' ? [esc(r.trimestre), esc(r.acumulado)] : [esc(r.valor)]).join(';')));
+    d.bp.forEach(r => linhas.push(['BP', r.cod_conta, r.conta].map(esc).concat(d.tipo === 'itr' ? [esc(r.valor), ''] : [esc(r.valor)]).join(';')));
+    d.dfc.forEach(r => linhas.push(['DFC', r.cod_conta, r.conta].map(esc).concat(d.tipo === 'itr' ? ['', esc(r.valor)] : [esc(r.valor)]).join(';')));
+    const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: (t + '_' + titulo.replace(/\s+/g, '_')).toLowerCase() + '.csv' });
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   function baixarCSV(f) {
