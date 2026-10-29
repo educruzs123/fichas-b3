@@ -39,15 +39,86 @@
   // ---------- busca no topo ----------
   let empresasCache = null;
   async function empresas() { if (!empresasCache) empresasCache = (await Fichas.lista()).map(e => Object.assign({ ticker: e.tickers[0] }, e)); return empresasCache; }
+  // ---------- busca no topo, com autocompletar ----------
+  const inBusca = $('#busca-topo-in');
+  const sug = h('ul', { class: 'sugestoes', id: 'busca-sug', role: 'listbox', hidden: true });
+  $('#busca-topo').appendChild(sug);
+  inBusca.setAttribute('role', 'combobox');
+  inBusca.setAttribute('aria-autocomplete', 'list');
+  inBusca.setAttribute('aria-controls', 'busca-sug');
+  inBusca.setAttribute('aria-expanded', 'false');
+  const semAcento = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  let itens = [], ativo = -1;
+  // pontua cada empresa: ticker exato > ticker que começa com o texto > palavra do nome que começa com o texto > texto no meio
+  function procurar(q, es) {
+    const Q = q.toUpperCase(), n = semAcento(q);
+    const out = [];
+    for (const e of es) {
+      let p = 0, tk = e.tickers[0];
+      for (const t of e.tickers) {
+        if (t === Q) { p = Math.max(p, 100); tk = t; }
+        else if (t.startsWith(Q)) { if (90 > p) tk = t; p = Math.max(p, 90); }
+      }
+      if (!p) {
+        const nome = semAcento(e.nome_curto + ' ' + e.nome);
+        if (nome.split(/[^a-z0-9]+/).some(w => w.startsWith(n))) p = 60;
+        else if (nome.includes(n)) p = 40;
+        else if (semAcento(e.setor).includes(n)) p = 10;
+      }
+      if (p) out.push({ e, tk, p: p + (e.ativa ? 5 : 0) });
+    }
+    return out.sort((a, b) => b.p - a.p || a.tk.localeCompare(b.tk)).slice(0, 8);
+  }
+  function marcar(texto, q) {
+    const i = semAcento(texto).indexOf(semAcento(q));
+    if (!q || i < 0) return [texto];
+    return [texto.slice(0, i), h('mark', null, texto.slice(i, i + q.length)), texto.slice(i + q.length)];
+  }
+  function fechar() { sug.hidden = true; sug.textContent = ''; itens = []; ativo = -1; inBusca.setAttribute('aria-expanded', 'false'); inBusca.removeAttribute('aria-activedescendant'); }
+  function destacar(i) {
+    ativo = i;
+    [...sug.children].forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+    if (i >= 0) inBusca.setAttribute('aria-activedescendant', 'sug-' + i); else inBusca.removeAttribute('aria-activedescendant');
+  }
+  const abrirFicha = t => { location.href = '?t=' + encodeURIComponent(t); };
+  async function sugerir() {
+    const q = inBusca.value.trim();
+    if (q.length < 1) { fechar(); return; }
+    let es; try { es = await empresas(); } catch (e) { fechar(); return; }
+    if (inBusca.value.trim() !== q) return; // o texto mudou enquanto carregava
+    itens = procurar(q, es);
+    sug.textContent = '';
+    if (!itens.length) { sug.appendChild(h('li', { class: 'vazio' }, 'Nenhuma empresa encontrada')); }
+    itens.forEach((it, i) => sug.appendChild(h('li', { id: 'sug-' + i, role: 'option', 'aria-selected': 'false',
+      onmousedown: ev => { ev.preventDefault(); abrirFicha(it.tk); }, onmousemove: () => { if (ativo !== i) destacar(i); } },
+      h('b', null, marcar(it.tk, q)), h('span', { class: 'n' }, marcar(it.e.nome_curto || it.e.nome, q)),
+      h('span', { class: 's' }, [it.e.tickers.length > 1 ? it.e.tickers.join(' ') : null, it.e.setor, it.e.ativa ? null : 'cancelada'].filter(Boolean).join(' · ')))));
+    sug.hidden = false;
+    inBusca.setAttribute('aria-expanded', 'true');
+    destacar(itens.length ? 0 : -1);
+  }
+  let espera = null;
+  inBusca.addEventListener('input', () => { clearTimeout(espera); espera = setTimeout(sugerir, 80); });
+  inBusca.addEventListener('focus', () => { empresas().catch(() => {}); if (inBusca.value.trim()) sugerir(); });
+  inBusca.addEventListener('blur', () => setTimeout(fechar, 120));
+  inBusca.addEventListener('keydown', ev => {
+    if (sug.hidden || !itens.length) return;
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); destacar((ativo + 1) % itens.length); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); destacar((ativo - 1 + itens.length) % itens.length); }
+    else if (ev.key === 'Escape') { fechar(); }
+  });
   $('#busca-topo').addEventListener('submit', async ev => {
     ev.preventDefault();
-    const q = $('#busca-topo-in').value.trim();
+    const q = inBusca.value.trim();
     if (!q) return;
+    if (!sug.hidden && ativo >= 0 && itens[ativo]) { abrirFicha(itens[ativo].tk); return; }
     try {
       const es = await empresas(), Q = q.toUpperCase();
       const e = es.find(x => x.tickers.includes(Q));
-      if (e) { location.href = '?t=' + encodeURIComponent(Q); return; }
-    } catch (e) { /* banco não importado */ }
+      if (e) { abrirFicha(Q); return; }
+      const r = procurar(q, es);
+      if (r.length === 1) { abrirFicha(r[0].tk); return; }
+    } catch (e) { /* banco indisponível */ }
     location.href = '?q=' + encodeURIComponent(q);
   });
 
