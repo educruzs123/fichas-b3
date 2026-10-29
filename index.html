@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fichas B3</title>
+<meta name="description" content="Fichas de ações da B3 com os balanços da CVM: receita, lucro, margens, ROE, P/L, dividendos e endividamento.">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<header class="topo">
+  <a class="marca" href="./"><img src="icone.svg" alt="" width="24" height="24"><span>Fichas B3</span></a>
+  <form class="busca" id="busca-topo" autocomplete="off">
+    <input id="busca-topo-in" type="search" placeholder="Ticker ou empresa (ex.: BBDC3, Vale)" aria-label="Buscar ticker ou empresa">
+  </form>
+  <nav>
+    <a href="./" data-nav="inicio">Empresas</a>
+  </nav>
+</header>
+<main id="app"><p class="carregando">Carregando…</p></main>
+<div id="tip" class="tip" role="tooltip"></div>
+<script src="graficos.js"></script>
+<script src="ficha.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
