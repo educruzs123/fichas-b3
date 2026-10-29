@@ -169,6 +169,9 @@
     const fv = v => ok(v) ? (emBi ? N1 : N0).format(v) : '';
     const fa = v => (emBi ? (Math.abs(v) < 10 ? N1 : N0) : N0).format(v);
 
+    // cotação diária (antes da receita)
+    secaoCotacaoDiaria(f);
+
     // receita
     const gR = h('div', { class: 'graf' });
     app.appendChild(card(h('h2', null, `${f.rotulo_receita}, ${cats[0] || ''}–${cats[cats.length - 1] || ''}`),
@@ -206,8 +209,7 @@
       refs: f.pl_media != null ? [{ valor: f.pl_media, rotulo: 'média ' + xv(f.pl_media) }] : [], rotulos: { fmt: v => N1.format(v) + 'x', amostra: '00,0x' }, vazio: temPreco ? 'Sem lucro por ação para calcular o P/L.' : 'Sem cotações deste ticker para calcular o P/L.',
       tooltip: i => { const r = Apl[i]; return [['P/L', r.p_l != null && r.p_l < 0 ? 'prejuízo' : xv(r.p_l), C1], [r.parcial ? 'Cotação atual' : 'Preço no fim do ano', rs(r.preco)], ['Lucro por ação', rs(r.lpa)], ['P/VP', xv(r.p_vp)], ['Valor de mercado', r.valor_mercado_bi != null ? 'R$ ' + N1.format(r.valor_mercado_bi) + ' bi' : null]]; } });
 
-    // cotação
-    secaoCotacaoDiaria(f);
+    // cotação mensal
     if (temPreco) secaoCotacao(f);
 
     // proventos
